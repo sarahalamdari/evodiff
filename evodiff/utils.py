@@ -1,16 +1,28 @@
-import torch
-import evodiff
-import numpy as np
-from sequence_models.constants import MASK, MSA_PAD, MSA_ALPHABET, MSA_AAS, GAP, START, STOP, SEP
-from evodiff.constants import BLOSUM_ALPHABET
-from sklearn.preprocessing import normalize
-import itertools
-from collections import Counter, OrderedDict
 import csv
-import pandas as pd
-import subprocess
+import itertools
 import os
+import subprocess
 import urllib
+
+import Bio
+from Bio.PDB import PDBParser
+import numpy as np
+import biotite.structure
+from biotite.structure.io import pdbx, pdb
+from biotite.structure.residues import get_residues
+from biotite.structure import filter_backbone
+from biotite.structure import get_chains
+from biotite.sequence import ProteinSequence
+from collections import Counter, OrderedDict
+import numpy as np
+import pandas as pd
+from sequence_models.constants import MASK, MSA_PAD, MSA_ALPHABET, MSA_AAS, GAP, START, STOP, SEP
+from sklearn.preprocessing import normalize
+import torch
+
+import evodiff
+from evodiff.constants import BLOSUM_ALPHABET
+
 
 def loadMatrix(path):
     """
@@ -525,10 +537,6 @@ def eval_disopred_output(out_fpath, ref_df, prefix='', num_seqs=100):
 
     return mean_gen_score #, mean_og_score
 
-
-import Bio
-from Bio.PDB import PDBParser
-import numpy as np
 def get_bfactor(filename):
     parser=PDBParser(PERMISSIVE=1)
     protein = parser.get_structure('A', filename)#'generated/100/pdb/SEQUENCE_0.pdb')
@@ -541,6 +549,75 @@ def get_bfactor(filename):
     b_factors = np.array(b_factors)
     return b_factors, b_factors.mean()
 
+
+def load_structure(fpath, chain=None):
+    """
+    Copied directly from facebookresearch/esm on 8/9, removing archived esm dependencies
+    Args:
+        fpath: filepath to either pdb or cif file
+        chain: the chain id or list of chain ids to load
+    Returns:
+        biotite.structure.AtomArray
+    """
+    if fpath.endswith('cif'):
+        with open(fpath) as fin:
+            pdbxf = pdbx.PDBxFile.read(fin)
+        structure = pdbx.get_structure(pdbxf, model=1)
+    elif fpath.endswith('pdb'):
+        with open(fpath) as fin:
+            pdbf = pdb.PDBFile.read(fin)
+        structure = pdb.get_structure(pdbf, model=1)
+    bbmask = filter_backbone(structure)
+    structure = structure[bbmask]
+    all_chains = get_chains(structure)
+    if len(all_chains) == 0:
+        raise ValueError('No chains found in the input file.')
+    if chain is None:
+        chain_ids = all_chains
+    elif isinstance(chain, list):
+        chain_ids = chain
+    else:
+        chain_ids = [chain]
+    for chain in chain_ids:
+        if chain not in all_chains:
+            raise ValueError(f'Chain {chain} not found in input file')
+    chain_filter = [a.chain_id in chain_ids for a in structure]
+    structure = structure[chain_filter]
+    return structure
+
+
+def extract_coords_from_structure(structure: biotite.structure.AtomArray):
+    """
+    Adapted from facebookresearch/esm on 8/9, removing archived esm dependencies
+    Args:
+        structure: An instance of biotite AtomArray
+    Returns:
+        Tuple (coords, seq)
+            - coords is an L x 3 x 3 array for N, CA, C coordinates
+            - seq is the extracted sequence
+    """
+    residue_identities = get_residues(structure)[1]
+    seq = ''.join([ProteinSequence.convert_letter_3to1(r) for r in residue_identities])
+    return seq
+
+
+def extract_coords_from_complex(structure):
+    """
+    Adapted from facebookresearch/esm on 8/9, removing archived esm dependencies
+    Args:
+        structure: biotite AtomArray
+    Returns:
+        Tuple (coords_list, seq_list)
+        - coords: Dictionary mapping chain ids to L x 3 x 3 array for N, CA, C
+          coordinates representing the backbone of each chain
+        - seqs: Dictionary mapping chain ids to native sequences of each chain
+    """
+    seqs = {}
+    all_chains = biotite.structure.get_chains(structure)
+    for chain_id in all_chains:
+        chain = structure[structure.chain_id == chain_id]
+        seqs[chain_id] = extract_coords_from_structure(chain)
+    return seqs
 
 
 

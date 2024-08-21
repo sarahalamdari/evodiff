@@ -2,96 +2,19 @@ import argparse
 import os
 import random
 
-import biotite.structure
-from biotite.structure.io import pdbx, pdb
-from biotite.structure.residues import get_residues
-from biotite.structure import filter_backbone
-from biotite.structure import get_chains
-from biotite.sequence import ProteinSequence
 import itertools
 import numpy as np
 import pathlib
 import pandas as pd
+from sequence_models.utils import parse_fasta
 import torch
 from tqdm import tqdm
 import urllib.request
 
 import evodiff
-from evodiff.plot import aa_reconstruction_parity_plot,
+from evodiff.plot import aa_reconstruction_parity_plot
 from evodiff.pretrained import OA_DM_640M, OA_DM_38M, CARP_640M, LR_AR_38M, LR_AR_640M
-from evodiff.utils import Tokenizer, run_omegafold, clean_pdb, run_tmscore
-from sequence_models.utils import parse_fasta
-
-
-
-def load_structure(fpath, chain=None):
-    """
-    Copied directly from facebookresearch/esm on 8/9, removing archived esm dependencies
-    Args:
-        fpath: filepath to either pdb or cif file
-        chain: the chain id or list of chain ids to load
-    Returns:
-        biotite.structure.AtomArray
-    """
-    if fpath.endswith('cif'):
-        with open(fpath) as fin:
-            pdbxf = pdbx.PDBxFile.read(fin)
-        structure = pdbx.get_structure(pdbxf, model=1)
-    elif fpath.endswith('pdb'):
-        with open(fpath) as fin:
-            pdbf = pdb.PDBFile.read(fin)
-        structure = pdb.get_structure(pdbf, model=1)
-    bbmask = filter_backbone(structure)
-    structure = structure[bbmask]
-    all_chains = get_chains(structure)
-    if len(all_chains) == 0:
-        raise ValueError('No chains found in the input file.')
-    if chain is None:
-        chain_ids = all_chains
-    elif isinstance(chain, list):
-        chain_ids = chain
-    else:
-        chain_ids = [chain]
-    for chain in chain_ids:
-        if chain not in all_chains:
-            raise ValueError(f'Chain {chain} not found in input file')
-    chain_filter = [a.chain_id in chain_ids for a in structure]
-    structure = structure[chain_filter]
-    return structure
-
-
-def extract_coords_from_structure(structure: biotite.structure.AtomArray):
-    """
-    Adapted from facebookresearch/esm on 8/9, removing archived esm dependencies
-    Args:
-        structure: An instance of biotite AtomArray
-    Returns:
-        Tuple (coords, seq)
-            - coords is an L x 3 x 3 array for N, CA, C coordinates
-            - seq is the extracted sequence
-    """
-    residue_identities = get_residues(structure)[1]
-    seq = ''.join([ProteinSequence.convert_letter_3to1(r) for r in residue_identities])
-    return seq
-
-
-def extract_coords_from_complex(structure):
-    """
-    Adapted from facebookresearch/esm on 8/9, removing archived esm dependencies
-    Args:
-        structure: biotite AtomArray
-    Returns:
-        Tuple (coords_list, seq_list)
-        - coords: Dictionary mapping chain ids to L x 3 x 3 array for N, CA, C
-          coordinates representing the backbone of each chain
-        - seqs: Dictionary mapping chain ids to native sequences of each chain
-    """
-    seqs = {}
-    all_chains = biotite.structure.get_chains(structure)
-    for chain_id in all_chains:
-        chain = structure[structure.chain_id == chain_id]
-        seqs[chain_id] = extract_coords_from_structure(chain)
-    return seqs
+from evodiff.utils import Tokenizer, run_omegafold, clean_pdb, run_tmscore, load_structure, extract_coords_from_structure, extract_coords_from_complex
 
 
 def main():
@@ -189,7 +112,7 @@ def main():
         os.makedirs(out_fpath + 'fasta/')
         os.makedirs(out_fpath + 'fasta/plots/')
 
-    data_top_dir = '/home/v-salamdari/Desktop/DMs/data/'
+    data_top_dir = '/home/salamdari/Desktop/evodiff/data/'
 
     if args.cond_task == 'idr':
         tokenized_sequences, start_idxs, end_idxs, queries, sequences, b_tokenized, b_starts, b_ends, query_ids = \

@@ -1,15 +1,19 @@
+import argparse
+import difflib
+import os
+import pathlib
+
+from ast import literal_eval
 import MDAnalysis as mda
 from MDAnalysis.analysis import rms
 import numpy as np
 import pandas as pd
-import os
-from evodiff.plot import plot_conditional_tmscores, plot_conditional_rmsd, plot_conditional_sim
-import argparse
-import difflib
-from ast import literal_eval
+
 from Bio.PDB import PDBParser, Selection
-import esm.inverse_folding
-import pathlib
+
+
+from evodiff.plot import plot_conditional_tmscores, plot_conditional_rmsd, plot_conditional_sim
+from evodiff.utils import load_structure, extract_coords_from_complex
 
 # Get RMSD between original motif and generated motif
 
@@ -90,8 +94,8 @@ def main():
 
     # percent similarity in fixed region
     chain_ids=[args.chain]
-    structure = esm.inverse_folding.util.load_structure(home+'/pdb/'+ref_pdb, chain_ids)
-    coords, native_seqs = esm.inverse_folding.multichain_util.extract_coords_from_complex(structure)
+    structure = load_structure(home+'/pdb/'+ref_pdb, chain_ids)
+    native_seqs = extract_coords_from_complex(structure)
     sequence = native_seqs[chain_ids[0]]
     print("NATIVE SEQ", sequence)
     original_fixed = sequence[args.start_idxs[0]:args.end_idxs[-1]]
